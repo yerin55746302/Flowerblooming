@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Polar Flower</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.3.1/p5.js"></script>
+  <style>
+    @font-face {
+      font-family: 'Pretendard-Regular';
+      src: url('https://fastly.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff') format('woff');
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    body {
+      background-color: #262626;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Pretendard-Regular';
+    }
+
+    .canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    .text {
+      position: absolute;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 18px;
+      text-align: center;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas-webgl"></canvas>
+  <div class="text">클릭해 씨앗을 심어주세요.</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    let v = [];
+let rows = 60, cols = 120;
+let canvas;
+
+let petalLength = 0;
+let targetPetalLength = 0;
+let curvature2 = 0;
+let targetCurvature2 = 0;
+
+const petalNum = 6;          
+let flowerDiameter = 0;
+let targetFlowerDiameter = 0;
+const petalSharpness = 0.4;  
+const flowerHeight = 300;    
+const curvature1 = 0.8;      
+const bumpiness = 2.5;       
+const bumpNum = 10;     
+
+let SmallSphereZ = -200;
+let targetSmallSphereZ = -200;
+
+let flowerOpacity = 0;
+let targetOpacity = 0;
+
+let sphereOpacity = 0;
+let targetSphereOpacity = 0;
+let maxSphereOpacity = 255;
+
+let isFirstDrag = true;
+let stemLength = 0;
+let targetStemLength = 0;
+
+let dragCount = 0; // 드래그 횟수를 세는 변수
+let canSecondDrag = false; // 두 번째 드래그 가능 여부
+let leavesVisible = false; // 잎이 보이는지 여부
+
+// 드래그 가능 여부 변수 추가
+let canDrag = false; // 드래그 가능 여부
+
+// 잎 크기 애니메이션 변수
+let leafScale = 0; // 잎의 크기 초기화
+let targetLeafScale = 1; // 목표 크기 설정
+let leafGrowthSpeed = 0.05; // 잎이 자라는 속도 설정
+
+let purpleSpheresVisible = [false, false, false, false, false];
+let purpleSpheresPos = [
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 }
+];
+let targetPurpleSpheresPos = [
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 },
+  { x: 0, y: 0, z: 0 }
+];
+let purpleSphereMoveSpeed = 0.03;
+let sphereCreated = false;
+let alertShown = false;
+let alertTimer;
+
+
+
+function setup() {
+  canvas = createCanvas(windowWidth, windowHeight, WEBGL);
+  canvas.class("canvas");
+
+  colorMode(HSB, 360, 100, 100);
+  angleMode(DEGREES);
+  noStroke();
+
+  camera(0, 0, 800, 0, 0, 0, 0, 1, 0); 
+  canvas.mouseClicked(mouseClicked); 
+}
+
+function draw() {
+  clear();
+  orbitControl(4, 4);
+  rotateX(60);
+
+  petalLength = lerp(petalLength, targetPetalLength, 0.02);
+  flowerDiameter = lerp(flowerDiameter, targetFlowerDiameter, 0.02);
+  curvature2 = lerp(curvature2, targetCurvature2, 0.02);
+  flowerOpacity = lerp(flowerOpacity, targetOpacity, 0.02);
+  sphereOpacity = lerp(sphereOpacity, targetSphereOpacity, 0.02);
+  stemLength = lerp(stemLength, targetStemLength, 0.05);
+  SmallSphereZ = lerp(SmallSphereZ, targetSmallSphereZ, 0.05); 
+
+  v = []; 
+
+  for (let theta = 0; theta < rows ; theta++) {
+    v.push([]);
+    for (let phi = 0; phi < cols; phi++) {
+      let r = (petalLength * pow(abs(sin(petalNum / 2 * phi * 360 / cols)), petalSharpness) + flowerDiameter) * theta / rows;
+      let x = r * cos(phi * 360 / cols);
+      let y = r * sin(phi * 360 / cols);
+      let z = vShape(flowerHeight, r / 100, curvature1, curvature2, 1.5) - 200 +
+        bumpinessEffect(bumpiness, r / 100, bumpNum, phi * 360 / cols);
+
+      let pos = createVector(x, y, z);
+      v[theta].push(pos);
+    }
+  }
+
+  for (let theta = 0; theta < v.length - 1; theta++) {
+    fill(210, 100 - theta, 100, flowerOpacity);
+    for (let phi = 0; phi < v[theta].length - 1; phi++) {
+      beginShape();
+      vertex(v[theta][phi].x, v[theta][phi].y, v[theta][phi].z);
+      vertex(v[theta + 1][phi].x, v[theta + 1][phi].y, v[theta + 1][phi].z);
+      vertex(v[theta + 1][phi + 1].x, v[theta + 1][phi + 1].y, v[theta + 1][phi + 1].z);
+      vertex(v[theta][phi + 1].x, v[theta][phi + 1].y, v[theta][phi + 1].z);
+      endShape(CLOSE);
+    }
+  }
+
+  drawSmallSphere();
+  drawSphere();
+  drawStem();
+  drawPot();
+  drawSoil();
+  drawPurpleSpheres();
+
+  // 줄기가 자란 후에만 잎을 그림
+  if (leavesVisible) {
+    // 잎의 크기를 애니메이션 처리
+    leafScale = lerp(leafScale, targetLeafScale, leafGrowthSpeed);
+    drawLeaves();
+  }
+}
+
+function mouseClicked() {
+  if (!canDrag) {
+    targetSmallSphereZ = -500;
+    canDrag = true;
+    setTimeout(() => {
+      document.querySelector('.text').innerText = "화면을 드래그해 꽃을 키워보세요.";
+    }, 2000);
+  } else {
+    let allSpheresHidden = true;
+    for (let i = 0; i < purpleSpheresPos.length; i++) {
+      const d = dist(mouseX - width / 2, mouseY - height / 2, purpleSpheresPos[i].x, purpleSpheresPos[i].y);
+      if (d < 20) {
+        purpleSpheresVisible[i] = false;
+        console.log(`보라색 구 ${i + 1} 클릭됨`);
+      }
+      if (purpleSpheresVisible[i]) {
+        allSpheresHidden = false;
+      }
+    }
+    
+    if (allSpheresHidden && dragCount === 1 && canSecondDrag && !alertShown) {
+      dragCount++;
+      targetPetalLength = 60;
+      targetCurvature2 = 0.3;
+      targetFlowerDiameter = 200;
+      targetOpacity = 255;
+      targetSphereOpacity = maxSphereOpacity;
+
+      alertTimer = setTimeout(() => {
+        alert('훌륭한 가드너! 식물은 삶을 풍요롭게 해요.');
+        alertShown = true;
+      }, 3000);
+    }
+  }
+}
+
+
+function mouseDragged() {
+  // 드래그 가능 여부 확인
+  if (!canDrag) return;
+
+  // 첫 번째 드래그
+  if (dragCount === 0) {
+    dragCount++;
+    targetStemLength = 400; // 첫 번째 드래그 시 줄기 길이 설정
+    console.log("첫 번째 드래그 실행");
+
+    setTimeout(() => {
+      canSecondDrag = true; // 2초 후 두 번째 드래그 가능
+      leavesVisible = true; // 첫 번째 드래그 후 잎 표시
+      console.log("두 번째 드래그 가능");
+
+      // 텍스트 변경: 보라색 벌레를 잡아 꽃을 보호하세요.
+      setTimeout(() => {
+        document.querySelector('.text').innerText = "보라색 벌레를 잡아 꽃을 보호하세요"; // 텍스트 변경
+      }, -600); // 2초 후 텍스트 변경
+    }, 2600);
+
+    setTimeout(() => {
+      for (let i = 0; i < 5; i++) {
+        purpleSpheresVisible[i] = true;
+
+        // 각 공의 위치를 랜덤하게 설정 (x, z축 기준)
+        let angle = random(-PI, PI);
+        purpleSpheresPos[i].x = random(-500, 500) * cos(angle); // x축 무작위
+        purpleSpheresPos[i].y = random(-250, 250);
+        purpleSpheresPos[i].z = random(-500, 500); // z축 무작위
+
+        targetPurpleSpheresPos[i] = { x: 0, y: 0, z: 0 };
+      }
+    }, 2500);
+  }
+
+  // 두 번째 드래그
+  else if (dragCount === 1 && canSecondDrag && purpleSpheresVisible.every(v => !v)) {
+    dragCount++; // 두 번째 드래그 카운트
+    targetPetalLength = 60; // 두 번째 드래그 시 꽃 애니메이션 설정
+    targetCurvature2 = 0.3;
+    targetFlowerDiameter = 200;
+    targetOpacity = 255;
+    targetSphereOpacity = maxSphereOpacity;
+
+  }
+}
+
+function animateFlower() {
+  // 클릭 시 애니메이션이 시작되도록 설정
+}
+
+function vShape(A, r, a, b, c) {
+  return A * pow(Math.E, -b * pow(abs(r), c)) * pow(abs(r), a);
+}
+
+function bumpinessEffect(A, r, f, angle) {
+  return 1 + A * pow(r, 2) * sin(f * angle);
+}
+
+function drawPurpleSpheres() {
+  let purpleSphereCountAtOrigin = 0; // (0, 0, 0) 위치에 도달한 보라색 구의 수
+
+  for (let i = 0; i < 5; i++) {
+    if (purpleSpheresVisible[i]) {
+      purpleSpheresPos[i].x = lerp(purpleSpheresPos[i].x, targetPurpleSpheresPos[i].x, purpleSphereMoveSpeed);
+      purpleSpheresPos[i].y = lerp(purpleSpheresPos[i].y, targetPurpleSpheresPos[i].y, purpleSphereMoveSpeed);
+      purpleSpheresPos[i].z = lerp(purpleSpheresPos[i].z, targetPurpleSpheresPos[i].z, purpleSphereMoveSpeed);
+
+      push();
+      fill('#800080');
+      translate(purpleSpheresPos[i].x, purpleSpheresPos[i].y, purpleSpheresPos[i].z);
+      sphere(15);
+      pop();
+
+      // 보라색 구가 (0, 0, 0)에 도달했는지 확인
+      if (abs(purpleSpheresPos[i].x) < 1 && abs(purpleSpheresPos[i].y) < 1 && abs(purpleSpheresPos[i].z) < 1) {
+        purpleSphereCountAtOrigin++; // 카운트 증가
+      }
+    }
+  }
+
+  if (purpleSphereCountAtOrigin === 1 && !alertShown) {
+  alert('가드닝에 재능이 없네요. 그래도 노력하면 나아질거예요.');
+  alertShown = true; // alert가 표시되었음을 기록
+} else if (purpleSphereCountAtOrigin > 1) {
+  alertShown = false; // 카운트를 초과하면 alertShown 리셋
+}
+}
+
+
+function drawSmallSphere() {
+  push();
+  translate(0, 0, SmallSphereZ); // targetSmallSphereZ 사용
+  fill('#0080FF'); // 작은 구 색상
+  sphere(10); // 작은 구 크기
+  pop();
+}
+
+function drawSphere() {
+  push();
+  translate(0, 0, 0); 
+  fill(60, 100, 100, sphereOpacity);
+  let sphereSize = map(petalLength, 0, targetPetalLength, 0, 40);
+  sphere(sphereSize);
+  pop();
+}
+
+function drawStem() {
+  push();
+  fill('#0080FF');
+  translate(0, 0, -730 + stemLength); // 줄기 애니메이션 시작점 설정
+  rotateX(90);
+  cylinder(8, stemLength);
+  pop();
+}
+
+function drawPot() {
+  push();
+  fill('#B2B2B2');
+  translate(0, 0, -550);
+  rotateX(90);
+  
+  push();
+  cylinder(110, 180);
+  translate(0, 60, 0);
+  cylinder(125, 70);
+  pop();
+  
+  pop();
+}
+
+function drawSoil() {
+  push();
+  fill('#686868');
+  translate(0, 0, -464);
+  rotateX(90);
+  cylinder(110, 20);
+  pop();
+}
+
+function drawLeaves() {
+  push();
+  fill('#0080FF'); // 잎 색상
+  translate(430, -450, -650); // 왼쪽 잎 위치 조정
+  rotateY(30);
+  ellipse(-500 - (60 * leafScale), height / 2, 130 * leafScale, 75);
+  pop();
+
+  push();
+  fill('#0080FF'); // 잎 색상
+  translate(-430, -450, -550); // 왼쪽 잎 위치 조정
+  rotateY(150);
+  ellipse(-500 - (60 * leafScale), height / 2, 130 * leafScale, 75);
+  pop();
+
+  push();
+  fill('#0080FF'); // 잎 색상
+  translate(430, -450, -450); // 왼쪽 잎 위치 조정
+  rotateY(30);
+  ellipse(-500 - (60 * leafScale), height / 2, 130 * leafScale, 75);
+  pop();
+}
+    
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+  </script>
+</body>
+</html>
